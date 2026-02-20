@@ -1,0 +1,10 @@
+streamlit>=1.20
+sqlalchemy>=1.4
+python-dotenv
+passlib[bcrypt]
+python-jose[cryptography]
+openai
+sqlparse
+pandas
+scikit-learn
+PyPDF2
