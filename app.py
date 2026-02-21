@@ -6,7 +6,6 @@ import os
 import tempfile
 import streamlit as st
 import pandas as pd
-##import sounddevice as sd
 import soundfile as sf
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
