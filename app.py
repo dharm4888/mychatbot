@@ -1,12 +1,10 @@
 # ==============================================
-# app.py — RAG Chatbot + Voice + SQL Console
+# app.py — RAG Chatbot + SQL Console (Cloud Ready)
 # ==============================================
 
 import os
-import tempfile
 import streamlit as st
 import pandas as pd
-import soundfile as sf
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 
@@ -20,7 +18,7 @@ from backend.models import Document
 load_dotenv()
 models.Base.metadata.create_all(db.engine)
 
-st.set_page_config(page_title="RAG Chatbot — Voice + SQL", layout="wide")
+st.set_page_config(page_title="RAG Chatbot — SQL", layout="wide")
 
 # ==============================================
 # 2. Sidebar Navigation
@@ -35,31 +33,11 @@ auth.verify_query_param_token()
 user_email = st.session_state.get("user_email", "guest")
 
 # ==============================================
-# 4. Voice Recorder Helper
-# ==============================================
-def record_audio(duration=10, samplerate=16000):
-    st.info("🎙️ Recording... Speak now!")
-    recording = sd.rec(
-        int(duration * samplerate),
-        samplerate=samplerate,
-        channels=1,
-        dtype="float32"
-    )
-    sd.wait()
-
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    sf.write(tmp.name, recording, samplerate)
-
-    st.success(f"✅ Recording complete ({duration}s)")
-    st.audio(tmp.name)
-    return tmp.name
-
-# ==============================================
-# 5. Chat Page — RAG + Voice
+# 4. Chat Page — RAG
 # ==============================================
 if page == "Chat":
-    st.title("💬 Chat (RAG + Real-Time Voice)")
-    st.markdown("Type or speak your question — the bot will respond using your uploaded PDFs or general knowledge.")
+    st.title("💬 Chat (RAG)")
+    st.markdown("Type your question — the bot will respond using your uploaded PDFs or general knowledge.")
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -74,22 +52,6 @@ if page == "Chat":
     with col2:
         top_k = st.number_input("Top-K", min_value=1, max_value=10, value=4)
 
-    # Voice
-    st.markdown("### 🎤 Speak to Chatbot")
-
-    if st.button("Start Voice Recording"):
-        audio_path = record_audio()
-        st.session_state.audio_path = audio_path
-
-    if st.button("Transcribe & Ask"):
-        if "audio_path" not in st.session_state:
-            st.warning("⚠️ Please record audio first.")
-        else:
-            transcription = utils.transcribe_audio(st.session_state.audio_path)
-            st.write(f"🗣️ You said: **{transcription}**")
-            user_query = transcription
-
-    # Process Query
     if user_query:
         with st.spinner("🤖 Thinking..."):
             try:
@@ -116,7 +78,6 @@ if page == "Chat":
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
-    # Chat History
     if st.session_state.chat_history:
         st.markdown("---")
         st.markdown("### 💬 Chat History")
@@ -126,7 +87,7 @@ if page == "Chat":
             st.divider()
 
 # ==============================================
-# 6. Documents Page
+# 5. Documents Page
 # ==============================================
 elif page == "Documents":
     st.title("📄 Manage Documents")
@@ -174,7 +135,7 @@ elif page == "Documents":
         st.info("Upload PDFs to enable RAG search.")
 
 # ==============================================
-# 7. SQL Console Page
+# 6. SQL Console Page
 # ==============================================
 elif page == "SQL Console":
     st.title("🧮 SQL Console")
@@ -186,7 +147,6 @@ elif page == "SQL Console":
             st.warning("⚠️ Please enter a query.")
         else:
             try:
-                # Direct SQL
                 if user_input.strip().lower().startswith(
                         ("select", "insert", "update", "delete", "create", "drop")):
                     sql_query = user_input.strip()
@@ -200,7 +160,6 @@ Return ONLY SQL:
 """
                         sql_query = utils.ask_openai(sql_prompt)
 
-                        # Clean LLM output
                         sql_query = (
                             sql_query
                             .replace("```sql", "")
@@ -233,7 +192,7 @@ Return ONLY SQL:
                 st.error(f"❌ Error: {e}")
 
 # ==============================================
-# 8. Settings Page
+# 7. Settings Page
 # ==============================================
 elif page == "Settings":
     st.title("⚙️ Settings")
