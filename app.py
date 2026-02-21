@@ -1,6 +1,7 @@
 # ==============================================
 # app.py — RAG Chatbot + Voice + SQL Console
 # ==============================================
+
 import os
 import tempfile
 import streamlit as st
@@ -39,10 +40,17 @@ user_email = st.session_state.get("user_email", "guest")
 # ==============================================
 def record_audio(duration=10, samplerate=16000):
     st.info("🎙️ Recording... Speak now!")
-    recording = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype="float32")
+    recording = sd.rec(
+        int(duration * samplerate),
+        samplerate=samplerate,
+        channels=1,
+        dtype="float32"
+    )
     sd.wait()
+
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     sf.write(tmp.name, recording, samplerate)
+
     st.success(f"✅ Recording complete ({duration}s)")
     st.audio(tmp.name)
     return tmp.name
@@ -63,25 +71,26 @@ if page == "Chat":
 
     col1, col2 = st.columns([3, 1])
     with col1:
-        user_query = st.text_input("Message", placeholder="Ask me something about your uploaded PDFs...")
+        user_query = st.text_input("Message", placeholder="Ask something about your PDFs...")
     with col2:
-        top_k = st.number_input("Top-K retrieved passages", min_value=1, max_value=10, value=4)
+        top_k = st.number_input("Top-K", min_value=1, max_value=10, value=4)
 
-    # --- Voice Recording ---
+    # Voice
     st.markdown("### 🎤 Speak to Chatbot")
+
     if st.button("Start Voice Recording"):
         audio_path = record_audio()
         st.session_state.audio_path = audio_path
 
     if st.button("Transcribe & Ask"):
         if "audio_path" not in st.session_state:
-            st.warning("⚠️ No audio recorded yet. Please record first.")
+            st.warning("⚠️ Please record audio first.")
         else:
             transcription = utils.transcribe_audio(st.session_state.audio_path)
             st.write(f"🗣️ You said: **{transcription}**")
             user_query = transcription
 
-    # --- Process query ---
+    # Process Query
     if user_query:
         with st.spinner("🤖 Thinking..."):
             try:
@@ -102,11 +111,13 @@ if page == "Chat":
                         for i, doc in enumerate(retrieved, 1):
                             txt = getattr(doc, "page_content", str(doc))
                             src = getattr(doc, "metadata", {}).get("source", "unknown")
+
                             st.markdown(f"**{i}. Source:** {src}")
                             st.markdown(txt[:800] + "...")
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
+    # Chat History
     if st.session_state.chat_history:
         st.markdown("---")
         st.markdown("### 💬 Chat History")
@@ -116,124 +127,127 @@ if page == "Chat":
             st.divider()
 
 # ==============================================
-# 6. Documents Page — Upload & Index
+# 6. Documents Page
 # ==============================================
 elif page == "Documents":
     st.title("📄 Manage Documents")
 
-    uploaded_files = st.file_uploader("Upload your PDFs", type=["pdf"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
+
     if uploaded_files:
-        with st.spinner("Processing and indexing documents..."):
+        with st.spinner("Processing and indexing..."):
             for file in uploaded_files:
                 utils.save_and_index_pdf(file)
-            st.success("✅ Documents uploaded and indexed successfully!")
+        st.success("✅ Documents indexed successfully!")
 
     with SessionLocal() as session:
         docs = session.query(Document).all()
+
         if docs:
-            df_db = pd.DataFrame([{"ID": d.id, "Name": getattr(d, "filename", getattr(d, "name", "unknown"))} for d in docs])
-            st.markdown("### 🗂 Documents in Database")
+            df_db = pd.DataFrame([
+                {"ID": d.id, "Name": getattr(d, "filename", "unknown")}
+                for d in docs
+            ])
             st.dataframe(df_db)
         else:
-            st.info("No documents stored in database yet.")
+            st.info("No documents in database.")
 
     if os.path.exists(utils.VECTOR_DIR):
         try:
-            vectorstore = FAISS.load_local(utils.VECTOR_DIR, utils.embeddings, allow_dangerous_deserialization=True)
+            vectorstore = FAISS.load_local(
+                utils.VECTOR_DIR,
+                utils.embeddings,
+                allow_dangerous_deserialization=True
+            )
             faiss_docs = list(vectorstore.docstore._dict.values())
+
             if faiss_docs:
-                df_faiss = pd.DataFrame([{"Name": d.metadata.get("source", "unknown")} for d in faiss_docs])
-                st.markdown("### 📚 Documents in FAISS Vectorstore")
+                df_faiss = pd.DataFrame([
+                    {"Name": d.metadata.get("source", "unknown")}
+                    for d in faiss_docs
+                ])
                 st.dataframe(df_faiss)
             else:
-                st.info("No documents in FAISS vectorstore yet.")
+                st.info("No documents in FAISS.")
         except Exception as e:
-            st.error(f"⚠️ Error loading FAISS vectorstore: {e}")
+            st.error(f"⚠️ FAISS Error: {e}")
     else:
-        st.info("FAISS vectorstore not found. Upload PDFs to enable RAG search.")
+        st.info("Upload PDFs to enable RAG search.")
 
 # ==============================================
-# # ==========================
-# # ==========================
-# # ==========================
-## ==========================
-# SQL Console Page
-# ==========================
+# 7. SQL Console Page
+# ==============================================
 elif page == "SQL Console":
     st.title("🧮 SQL Console")
-    st.markdown("Type an SQL query or ask in plain English — e.g. *'Show top 5 t-shirt brands'*")
 
-    user_input = st.text_area("Enter your SQL query or question:")
+    user_input = st.text_area("Enter SQL or question:")
 
-    if st.button("Run SQL / Ask"):
+    if st.button("Run"):
         if not user_input.strip():
-            st.warning("⚠️ Please enter a query or question.")
+            st.warning("⚠️ Please enter a query.")
         else:
             try:
-                # Determine if user typed SQL directly
+                # Direct SQL
                 if user_input.strip().lower().startswith(
-                    ("select", "insert", "update", "delete", "create", "drop")
-                ):
+                        ("select", "insert", "update", "delete", "create", "drop")):
                     sql_query = user_input.strip()
                 else:
-                    # Convert natural language to SQL
-                    with st.spinner("🧠 Translating your question to SQL..."):
+                    with st.spinner("🧠 Converting to SQL..."):
                         sql_prompt = f"""
-You are a SQL expert. Convert the following natural language question into a valid SQL query
-for a table named 't_shirts'. Only return the SQL query:
+Convert this question into SQL for table 't_shirts'.
+Return ONLY SQL:
 
-Question: "{user_input}"
+{user_input}
 """
                         sql_query = utils.ask_openai(sql_prompt)
 
-                        # ===== FIX: Clean the LLM output =====
-                        sql_query = sql_query.strip()              # remove whitespace
-                        if sql_query.lower().startswith("sql"):
-                            sql_query = sql_query[3:].strip()     # remove 'sql' prefix
-                        # Remove backticks or triple quotes
-                        sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+                        # Clean LLM output
+                        sql_query = (
+                            sql_query
+                            .replace("```sql", "")
+                            .replace("```", "")
+                            .replace("sql", "")
+                            .strip()
+                        )
 
-                # Show the generated SQL
-                st.markdown("### 🧾 Generated SQL Query")
                 st.code(sql_query, language="sql")
 
-                # Execute the query
                 res = sql_tool.run_sql_query(sql_query)
 
-                # Display results
                 if res["status"] == "success":
                     df = res["data"]
+
                     if not df.empty:
-                        st.success("✅ Query executed successfully!")
+                        st.success("✅ Success")
 
                         if df.shape[1] == 1:
-                            # Single-column → comma-separated list
-                            col_name = df.columns[0]
-                            values = df[col_name].dropna().astype(str).tolist()
-                            st.markdown("🧠 Top Results:")
-                            st.markdown(", ".join(values))
+                            values = df.iloc[:, 0].astype(str).tolist()
+                            st.write(", ".join(values))
                         else:
-                            # Multi-column → table
-                            st.markdown("🧠 Top Results Table:")
                             st.dataframe(df, use_container_width=True)
                     else:
-                        st.info("No data returned from query.")
+                        st.info("No data returned.")
                 else:
-                    st.error(f"❌ SQL Error: {res['error']}")
+                    st.error(res["error"])
 
             except Exception as e:
-                st.error(f"❌ Unexpected error: {e}")
-
-
+                st.error(f"❌ Error: {e}")
 
 # ==============================================
 # 8. Settings Page
 # ==============================================
 elif page == "Settings":
     st.title("⚙️ Settings")
-    st.markdown("Manage your chatbot and database configuration here.")
 
-    openai_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
-    if openai_key:
-        os.environ["OPENAI_API_KEY"] = openai_key
-        st.success("✅ API key updated for this session.")
+    openai_key = st.text_input(
+        "OpenAI API Key",
+        type="password",
+        value=os.getenv("OPENAI_API_KEY", "")
+    )
+
+    if st.button("Update API Key"):
+        if openai_key.strip():
+            os.environ["OPENAI_API_KEY"] = openai_key.strip()
+            st.success("✅ API key updated for this session.")
+        else:
+            st.warning("⚠️ Please enter a valid key.")
